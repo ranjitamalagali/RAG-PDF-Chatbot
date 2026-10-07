@@ -1,9 +1,10 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel
 import os
+
 from app.pdf_processor import extract_documents_from_pdf
 from app.rag import split_documents, generate_answer
 from app.embeddings import create_vector_store, save_vector_store
@@ -21,7 +22,10 @@ app = FastAPI(
 
 
 # CORS configuration
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URL = os.getenv(
+    "FRONTEND_URL",
+    "http://localhost:5173"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,6 +41,7 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 
+# Home endpoint
 @app.get("/")
 def home():
     return {
@@ -44,6 +49,7 @@ def home():
     }
 
 
+# Health check
 @app.get("/health")
 def health():
     return {
@@ -51,6 +57,7 @@ def health():
     }
 
 
+# PDF upload endpoint
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
 
@@ -66,16 +73,28 @@ async def upload_pdf(file: UploadFile = File(...)):
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # Extract PDF pages with metadata
+    # Extract text from PDF
     documents = extract_documents_from_pdf(str(file_path))
 
-    # Split documents into chunks
+    # Check if PDF contains readable text
+    if not documents:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not extract text from this PDF. Please upload a text-based PDF."
+        )
+
+    # Split document into chunks
     chunks = split_documents(documents)
 
-    # Create FAISS vector store
-    vector_store = create_vector_store(chunks)
+    # Check if chunks were created
+    if not chunks:
+        raise HTTPException(
+            status_code=400,
+            detail="No readable text was found in the PDF."
+        )
 
-    # Save FAISS vector store
+    # Create and save FAISS vector store
+    vector_store = create_vector_store(chunks)
     save_vector_store(vector_store)
 
     return {
@@ -86,10 +105,12 @@ async def upload_pdf(file: UploadFile = File(...)):
     }
 
 
+# Chat request model
 class ChatRequest(BaseModel):
     question: str
 
 
+# Chat endpoint
 @app.post("/chat")
 async def chat(request: ChatRequest):
 
