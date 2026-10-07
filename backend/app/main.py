@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel
-
+import os
 from app.pdf_processor import extract_documents_from_pdf
 from app.rag import split_documents, generate_answer
 from app.embeddings import create_vector_store, save_vector_store
@@ -21,9 +21,11 @@ app = FastAPI(
 
 
 # CORS configuration
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[FRONTEND_URL],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
